@@ -2,6 +2,8 @@
 
 document.addEventListener("DOMContentLoaded", startBabylonJS, false);
 
+// Global vars
+// TODO: try to avoid globals
 var canvas;
 var engine;
 var scene;
@@ -10,46 +12,7 @@ var light1;
 var camera;
 var cameraPath;
 
-var makeTextPlane = function(text, color, size) {
-	var dynamicTexture = new BABYLON.DynamicTexture("DynamicTexture", 50, scene, true);
-	dynamicTexture.hasAlpha = true;
-	dynamicTexture.drawText(text, 5, 40, "bold 36px Arial", color , "transparent", true);
-	var plane = new BABYLON.Mesh.CreatePlane("TextPlane", size, scene, true);
-	plane.material = new BABYLON.StandardMaterial("TextPlaneMaterial", scene);
-	plane.material.backFaceCulling = false;
-	plane.material.specularColor = new BABYLON.Color3(0, 0, 0);
-	plane.material.diffuseTexture = dynamicTexture;
-	return plane;
-};
-
-// show axis
-var showAxis = function(size) {
-
-
-	var axisX = BABYLON.Mesh.CreateLines("axisX", [ 
-		new BABYLON.Vector3.Zero(), new BABYLON.Vector3(size, 0, 0), new BABYLON.Vector3(size * 0.95, 0.05 * size, 0), 
-		new BABYLON.Vector3(size, 0, 0), new BABYLON.Vector3(size * 0.95, -0.05 * size, 0)
-	], scene);
-	axisX.color = new BABYLON.Color3(1, 0, 0);
-	var xChar = makeTextPlane("X", "red", size / 10);
-	xChar.position = new BABYLON.Vector3(0.9 * size, -0.05 * size, 0);
-	var axisY = BABYLON.Mesh.CreateLines("axisY", [
-		new BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, size, 0), new BABYLON.Vector3( -0.05 * size, size * 0.95, 0), 
-		new BABYLON.Vector3(0, size, 0), new BABYLON.Vector3( 0.05 * size, size * 0.95, 0)
-	], scene);
-	axisY.color = new BABYLON.Color3(0, 1, 0);
-	var yChar = makeTextPlane("Y", "green", size / 10);
-	yChar.position = new BABYLON.Vector3(0, 0.9 * size, -0.05 * size);
-	var axisZ = BABYLON.Mesh.CreateLines("axisZ", [
-		new BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, 0, size), new BABYLON.Vector3( 0 , -0.05 * size, size * 0.95),
-		new BABYLON.Vector3(0, 0, size), new BABYLON.Vector3( 0, 0.05 * size, size * 0.95)
-	], scene);
-	axisZ.color = new BABYLON.Color3(0, 0, 1);
-	var zChar = makeTextPlane("Z", "blue", size / 10);
-	zChar.position = new BABYLON.Vector3(0, 0.05 * size, 0.9 * size);
-};
-	
-
+// General inicialisation
 var initBabylon = function (){
 	if (!BABYLON.Engine.isSupported()) return false;
 	
@@ -60,7 +23,7 @@ var initBabylon = function (){
 
 	scene 	= new BABYLON.Scene(engine);
 
-	light	= new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
+	light	= new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 10, 0), scene);
 	
 	camera	= new BABYLON.ArcRotateCamera("camera1", 0, 0, 0, new BABYLON.Vector3(0, 0, 0), scene);
 	camera.setPosition(new BABYLON.Vector3(-20, 55, 40));
@@ -69,7 +32,9 @@ var initBabylon = function (){
 	return true;
 }
 
-// cubic Bézier function
+// Optimized cubic Bézier function
+// Return path of the vertex between origin and destination curved by control vertices
+//
 // cubicBezier(vector3Origin, vector3Control1, vector3Control2, vector3Destination, segmentNumber)
 var cubicBezier = function(v0, v1, v2, v3, nb) {
 	var bez = [];
@@ -96,9 +61,17 @@ var cubicBezier = function(v0, v1, v2, v3, nb) {
 	return bez;
 };
 
-function sinaps3D(start,end){
+/** Class for 3D axons - curved horn with optional lights
+ * @param {string} name - Name of the axon's mesh
+ * @param {BABYLON.Vector3} start - Starting point
+ * @param {BABYLON.Vector3} end - Ending point
+ * @param {BABYLON.Scene} scene - Scene to put axon
+ */
+function axon3D(name,start,end,scene){
 	this.start = start;
 	this.diff = end.subtract(start);
+	
+	// Make axon curved by putting two control points for cubic Bézier
 	this.control1 = start.add(
 		new BABYLON.Vector3(
 			 2*this.diff.y/3,
@@ -118,17 +91,22 @@ function sinaps3D(start,end){
 	this.p = null;
 	this.tube = null;
 	this.maxCycles = 50;
+	
+	// Make lights cycles random
 	this.cycles = Math.floor(Math.random() * 8 * this.maxCycles);
 	
+	// Use cubic Bézier function to calculate axon's path
 	this.path = function (){
 		this.p = cubicBezier(this.start,this.control1,this.control2,this.end,this.maxCycles);
 		return this.p;
 	}
 	
+	// Use hyberbolic function for axon's radius
 	this.radius = function(i, distance){
 		return 5/(i+4);
 	}
 	
+	// This function draws "light" as a small sphere` moving over axon
 	this.light = function (){
 		this.cycles+=3;
 		if(this.cycles>=this.maxCycles*10){
@@ -147,10 +125,81 @@ function sinaps3D(start,end){
 		}
 		
 	}
-	this.sphere = BABYLON.Mesh.CreateSphere("sphere1", 16, 1, scene);
-	this.tube = BABYLON.Mesh.CreateTube("tube", this.path(), 2, 60, this.radius, BABYLON.Mesh.CAP_ALL, scene, true, BABYLON.Mesh.FRONTSIDE);
+	
+	// Create "light" sphere
+	this.sphere = BABYLON.Mesh.CreateSphere(name+"_light", 16, 1, scene);
+	
+	// Create axon as a tube
+	this.tube = BABYLON.Mesh.CreateTube(name+"_tube", this.path(), 2, 60, this.radius, BABYLON.Mesh.CAP_ALL, scene, true, BABYLON.Mesh.FRONTSIDE);
 }
 
+/** Class for 3D neuron center with axons towards sinapses
+ * @param {string} name - Name of the neuron
+ * @param {BABYLON.Vector3} center - center point of the neuron
+ * @param {BABYLON.Vector3[]} endPoints - Array of the axon's ending points
+ * @param {number} radius - Radius of the central part of the neuron
+ * @param {BABYLON.Scene} scene - Scene to put axon
+ */
+function neuron3D(name,center,endPoints,radius,scene){
+	this.name = name;
+	this.center = center;
+	this.scene = scene;
+	
+	// curved tubes
+	this.axons = [];
+
+	// coordinates of endPoints
+	this.endPoints = endPoints;
+	
+	// spheres at the end of tubes
+	this.sinaps = [];
+	
+	// Create axons
+	endPoints.forEach(function(point,index){
+		this.axons.push(new axon3D(name+"_"+index,center,point,scene));
+	},this);
+	
+	// Light up axons - all or by index
+	this.light = function (index){
+		if(index == null){
+			this.axons.forEach(function(axon,index){
+				axon.light();
+			},this);
+		} else {
+			this.axons[index].light();
+		}
+	}
+	
+	// Sphere at the end of axon
+	this.showSinaps = function (index){
+		if(index == null){
+			this.endPoints.forEach(function(point,index){
+				var sphere = BABYLON.Mesh.CreateSphere(this.name + "_sinaps_"+index, 16, 1, this.scene);
+				sphere.position = point;
+				this.sinaps.push(sphere);
+			},this);
+		} else {
+				var sphere = BABYLON.Mesh.CreateSphere(this.name + "_sinaps_"+index, 16, 1, this.scene);
+				sphere.position = endPoints[index];
+				this.sinaps.push(sphere);
+		}
+	}
+	
+	this.nucleus = BABYLON.Mesh.CreateSphere(name+"_central_sphere", 16, radius, scene);
+	this.nucleus.position = center;
+	
+	this.material = function(matNeuron){
+		this.nucleus.material = matNeuron;
+		
+		this.axons.forEach(function(axon,index){
+			axon.tube.material = matNeuron;
+		},this);
+		
+		this.sinaps.forEach(function(sin,index){
+			sin.material = matNeuron;
+		},this);
+	}
+}
 
 function startBabylonJS() {
 	if (!initBabylon()) {
@@ -158,89 +207,57 @@ function startBabylonJS() {
 		return;
 	}
 	
-	// material
-	var matSphere = new BABYLON.StandardMaterial("default", scene);
-	matSphere.emissiveColor = new BABYLON.Color3(.3,0,1);
-
+	// Material for sinapses
+	// Bump texture with purple color
 	var mat = new BABYLON.StandardMaterial("default", scene);
 	mat.diffuseColor = BABYLON.Color3.Purple();
     mat.bumpTexture = new BABYLON.Texture("NormalMapM.png", scene);
     mat.bumpTexture.level = 3;
 	mat.specularColor = new BABYLON.Color3(1,0,1);
 
+	// Emissive material for electric light
+	var matSphere = new BABYLON.StandardMaterial("default", scene);
+	matSphere.emissiveColor = new BABYLON.Color3(.3,0,1);
+
+
 	var center = new BABYLON.Vector3(  0, 0, 0);
-	var points = [
+	
+	var neuron1 = new neuron3D(
+		"neuron1",
+		new BABYLON.Vector3( 0, 0, 0),
+		[
+			new BABYLON.Vector3(  20,  0, 20),
+			new BABYLON.Vector3( -20, 0,  20),
+			new BABYLON.Vector3( 10, -20,  -10),
+			new BABYLON.Vector3( 0, 20,  -20)
+		],
+		5,
+		scene
+	);
+	
+	var neuron2 = new neuron3D(
+		"neuron2",
 		new BABYLON.Vector3(  20,  0, 20),
-		new BABYLON.Vector3( -20, 0,  20),
-		new BABYLON.Vector3( 10, -20,  -10),
-		new BABYLON.Vector3( 0, 20,  -20),
-		new BABYLON.Vector3(  30,  10, 20),
-		new BABYLON.Vector3(  20,  -10, 30)
-	];
+		[
+			new BABYLON.Vector3(  30,  10, 20),
+			new BABYLON.Vector3(  20,  -10, 30)
+		],
+		3,
+		scene
+	);
 	
-	var sinaps  = new sinaps3D(center,points[0]);
-	var sinaps1 = new sinaps3D(center,points[1]);
-	var sinaps2 = new sinaps3D(center,points[2]);
-	var sinaps3 = new sinaps3D(center,points[3]);
-
-	var sinaps4 = new sinaps3D(points[0],points[4]);
-	var sinaps5 = new sinaps3D(points[0],points[5]);
+	neuron1.showSinaps();
+	neuron2.showSinaps();
 	
-	sinaps.sphere.material = matSphere;
-	sinaps.tube.material = mat;
+	neuron1.material(mat);
+	neuron2.material(mat);
 	
-	sinaps1.sphere.material = matSphere;
-	sinaps1.tube.material = mat;
-
-	sinaps2.sphere.material = matSphere;
-	sinaps2.tube.material = mat;
-
-	sinaps3.sphere.material = matSphere;
-	sinaps3.tube.material = mat;
-
-	sinaps4.sphere.material = matSphere;
-	sinaps4.tube.material = mat;
-
-	sinaps5.sphere.material = matSphere;
-	sinaps5.tube.material = mat;
-
 	
-	var sphere = BABYLON.Mesh.CreateSphere("sphere1", 16, 5, scene);
-	sphere.position = center;
-	sphere.material = mat;
-
-	var sphere1 = BABYLON.Mesh.CreateSphere("sphere1", 16, 3, scene);
-	sphere1.position = points[0];
-	sphere1.material = mat;
-
-	var sphere2 = BABYLON.Mesh.CreateSphere("sphere1", 16, 1, scene);
-	sphere2.position = points[1];
-	sphere2.material = mat;
-	
-	var sphere2 = BABYLON.Mesh.CreateSphere("sphere1", 16, 1, scene);
-	sphere2.position = points[2];
-	sphere2.material = mat;
-	
-	var sphere2 = BABYLON.Mesh.CreateSphere("sphere1", 16, 1, scene);
-	sphere2.position = points[3];
-	sphere2.material = mat;
-
-	var sphere2 = BABYLON.Mesh.CreateSphere("sphere1", 16, 1, scene);
-	sphere2.position = points[4];
-	sphere2.material = mat;
-
-	var sphere2 = BABYLON.Mesh.CreateSphere("sphere1", 16, 1, scene);
-	sphere2.position = points[5];
-	sphere2.material = mat;	
-
 	light1	= new BABYLON.HemisphericLight("light2", new BABYLON.Vector3(5, 5, 5), scene);
 
 	
 	var maxCycles = 50;
 	var cycles = maxCycles;
-	
-	//scene.debugLayer.show();
-	//showAxis(20);
 
 	cameraPath = cubicBezier(
 		new BABYLON.Vector3(-20, 55, 40),
@@ -253,29 +270,17 @@ function startBabylonJS() {
 
 	
 	scene.registerBeforeRender(function(){
-		sinaps.light();
-		sinaps1.light();
-		sinaps2.light();
-		sinaps3.light();
-		sinaps4.light();
-		sinaps5.light();
+		neuron1.light();
+		neuron2.light();
 		light.position = camera.position;
 
-		cycles+=1;
-		if(cycles>=maxCycles){
-			cycles = -2;
+		if(cycles++>=maxCycles){
+			cycles = 0;
 			maxCycles = 200*Math.random();
 			light1.setEnabled(1);
 		}
-		if(cycles > 2) {
-			sphere.scaling.x = 1;
-			sphere.scaling.y = 1;
-			sphere.scaling.z = 1;
+		if(cycles > 4) {
 			light1.setEnabled(0);
-		} else {
-			sphere.scaling.x = 1+(2-Math.abs(cycles))*0.05;
-			sphere.scaling.y = 1+(2-Math.abs(cycles))*0.05;
-			sphere.scaling.z = 1+(2-Math.abs(cycles))*0.05;
 		}
 		
 		if(initialCycles-->0){
