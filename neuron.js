@@ -2,34 +2,40 @@
 
 document.addEventListener("DOMContentLoaded", startBabylonJS, false);
 
-// Global vars
-// TODO: try to avoid globals
-var canvas;
-var engine;
-var scene;
-var light;
-var light1;
-var camera;
-var cameraPath;
-
 // General inicialisation
 var initBabylon = function (){
 	if (!BABYLON.Engine.isSupported()) return false;
 	
-	canvas 	= document.getElementById("renderCanvas");
+	var canvas 	= document.getElementById("renderCanvas");
 
-	engine 	= new BABYLON.Engine(canvas, true);
+	var engine 	= new BABYLON.Engine(canvas, true);
 	engine.enableOfflineSupport = false;
 
-	scene 	= new BABYLON.Scene(engine);
+	var scene 	= new BABYLON.Scene(engine);
 
-	light	= new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 10, 0), scene);
+	var light	= new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 10, 0), scene);
 	
-	camera	= new BABYLON.ArcRotateCamera("camera1", 0, 0, 0, new BABYLON.Vector3(0, 0, 0), scene);
+	var camera	= new BABYLON.ArcRotateCamera("camera1", 0, 0, 0, new BABYLON.Vector3(0, 0, 0), scene);
 	camera.setPosition(new BABYLON.Vector3(-20, 55, 40));
 	camera.attachControl(canvas, true);
 
-	return true;
+    engine.runRenderLoop(function () {
+		scene.render();
+	});
+	
+	window.addEventListener("resize", function () {
+		engine.resize();
+	});
+	
+	var context = {
+		canvas	: canvas,
+		engine	: engine,
+		scene 	: scene,
+		light	: light,
+		camera	: camera
+	};
+	
+	return context;
 }
 
 // Optimized cubic Bézier function
@@ -202,17 +208,23 @@ function neuron3D(name,center,endPoints,radius,scene){
 }
 
 function startBabylonJS() {
-	if (!initBabylon()) {
+	var context = initBabylon();
+	
+	if (context == false	) {
 		alert("Sorry, your browser does not support 3D");
 		return;
 	}
 	
+	var scene = context.scene;
+	var light = context.light;
+	var camera = context.camera;
+	
 	// Material for sinapses
 	// Bump texture with purple color
 	var mat = new BABYLON.StandardMaterial("default", scene);
-	mat.diffuseColor = BABYLON.Color3.Purple();
+	mat.diffuseColor = new BABYLON.Color3(1,0.5,1);
     mat.bumpTexture = new BABYLON.Texture("NormalMapM.png", scene);
-    mat.bumpTexture.level = 3;
+    mat.bumpTexture.level = 1;
 	mat.specularColor = new BABYLON.Color3(1,0,1);
 
 	// Emissive material for electric light
@@ -246,28 +258,38 @@ function startBabylonJS() {
 		scene
 	);
 	
+	var neuron3 = new neuron3D(
+		"neuron3",
+		new BABYLON.Vector3(  -20,  0, -20),
+		[
+			new BABYLON.Vector3(  -30,  -10, -20),
+			new BABYLON.Vector3(  -20,  10, -30),
+			new BABYLON.Vector3(  -10,  0, -10)
+		],
+		3,
+		scene
+	);
+	
 	neuron1.showSinaps();
 	neuron2.showSinaps();
 	
 	neuron1.material(mat);
 	neuron2.material(mat);
-	
-	
-	light1	= new BABYLON.HemisphericLight("light2", new BABYLON.Vector3(5, 5, 5), scene);
+	neuron3.material(mat);	
 
+	var light1	= new BABYLON.HemisphericLight("light2", new BABYLON.Vector3(5, 5, 5), scene);
 	
 	var maxCycles = 50;
 	var cycles = maxCycles;
 
-	cameraPath = cubicBezier(
+	var cameraPath = cubicBezier(
 		new BABYLON.Vector3(-20, 55, 40),
 		new BABYLON.Vector3(-30, 80, 20),
 		new BABYLON.Vector3(30, -80, 20),
 		new BABYLON.Vector3(-100, -40, 100),
-		50
+		500
 	);
 	var initialCycles = cameraPath.length - 1;
-
 	
 	scene.registerBeforeRender(function(){
 		neuron1.light();
@@ -277,23 +299,14 @@ function startBabylonJS() {
 		if(cycles++>=maxCycles){
 			cycles = 0;
 			maxCycles = 200*Math.random();
-			light1.setEnabled(1);
+			//light1.setEnabled(1);
 		}
-		if(cycles > 4) {
-			light1.setEnabled(0);
+		if(cycles > 40) {
+			//light1.setEnabled(0);
 		}
 		
 		if(initialCycles-->0){
 			camera.setPosition(new BABYLON.Vector3(cameraPath[initialCycles].x,cameraPath[initialCycles].y,cameraPath[initialCycles].z));
 		}
 	});
-	
-    engine.runRenderLoop(function () {
-		scene.render();
-	});
-	
-	window.addEventListener("resize", function () {
-		engine.resize();
-	});
-
 }
